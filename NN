@@ -1,0 +1,180 @@
+
+#include <iostream>
+#include <vector>
+#include <cmath>
+#include <random>
+#include <algorithm>
+#include <iomanip>
+
+using namespace std;
+
+const int INPUT = 784;
+const int HIDDEN = 128;
+const int OUTPUT = 10;
+
+double relu(double x) {
+    return max(0.0, x);
+}
+
+double reluDerivative(double x) {
+    return x > 0 ? 1.0 : 0.0;
+}
+
+vector<double> softmax(const vector<double>& x) {
+    vector<double> result(x.size());
+    double mx = *max_element(x.begin(), x.end());
+    double sum = 0;
+
+    for (int i = 0; i < (int)x.size(); i++) {
+        result[i] = exp(x[i] - mx);
+        sum += result[i];
+    }
+
+    for (double& v : result)
+        v /= sum;
+
+    return result;
+}
+
+struct NeuralNetwork {
+    vector<vector<double>> w1, w2;
+    vector<double> b1, b2;
+    mt19937 rng{random_device{}()};
+
+    NeuralNetwork() {
+        normal_distribution<double> d1(
+            0.0, sqrt(2.0 / INPUT)
+        );
+        normal_distribution<double> d2(
+            0.0, sqrt(2.0 / HIDDEN)
+        );
+
+        w1.assign(HIDDEN, vector<double>(INPUT));
+        w2.assign(OUTPUT, vector<double>(HIDDEN));
+        b1.assign(HIDDEN, 0.0);
+        b2.assign(OUTPUT, 0.0);
+
+        for (auto& row : w1)
+            for (double& w : row)
+                w = d1(rng);
+
+        for (auto& row : w2)
+            for (double& w : row)
+                w = d2(rng);
+    }
+
+    vector<double> predict(const vector<double>& x) {
+        vector<double> z1(HIDDEN);
+        vector<double> a1(HIDDEN);
+        vector<double> z2(OUTPUT);
+
+        for (int i = 0; i < HIDDEN; i++) {
+            z1[i] = b1[i];
+
+            for (int j = 0; j < INPUT; j++)
+                z1[i] += w1[i][j] * x[j];
+
+            a1[i] = relu(z1[i]);
+        }
+
+        for (int i = 0; i < OUTPUT; i++) {
+            z2[i] = b2[i];
+
+            for (int j = 0; j < HIDDEN; j++)
+                z2[i] += w2[i][j] * a1[j];
+        }
+
+        return softmax(z2);
+    }
+
+    void trainOne(
+        const vector<double>& x,
+        int label,
+        double lr = 0.01
+    ) {
+        vector<double> z1(HIDDEN), a1(HIDDEN);
+        vector<double> z2(OUTPUT), a2(OUTPUT);
+
+        // Forward propagation
+        for (int i = 0; i < HIDDEN; i++) {
+            z1[i] = b1[i];
+
+            for (int j = 0; j < INPUT; j++)
+                z1[i] += w1[i][j] * x[j];
+
+            a1[i] = relu(z1[i]);
+        }
+
+        for (int i = 0; i < OUTPUT; i++) {
+            z2[i] = b2[i];
+
+            for (int j = 0; j < HIDDEN; j++)
+                z2[i] += w2[i][j] * a1[j];
+        }
+
+        a2 = softmax(z2);
+
+        // Output layer error
+        vector<double> delta2(OUTPUT);
+
+        for (int i = 0; i < OUTPUT; i++)
+            delta2[i] = a2[i] - (i == label ? 1.0 : 0.0);
+
+        // Hidden layer error
+        vector<double> delta1(HIDDEN, 0.0);
+
+        for (int j = 0; j < HIDDEN; j++) {
+            for (int i = 0; i < OUTPUT; i++)
+                delta1[j] += w2[i][j] * delta2[i];
+
+            delta1[j] *= reluDerivative(z1[j]);
+        }
+
+        // Update output weights
+        for (int i = 0; i < OUTPUT; i++) {
+            for (int j = 0; j < HIDDEN; j++)
+                w2[i][j] -= lr * delta2[i] * a1[j];
+
+            b2[i] -= lr * delta2[i];
+        }
+
+        // Update hidden weights
+        for (int i = 0; i < HIDDEN; i++) {
+            for (int j = 0; j < INPUT; j++)
+                w1[i][j] -= lr * delta1[i] * x[j];
+
+            b1[i] -= lr * delta1[i];
+        }
+    }
+};
+
+int main() {
+    NeuralNetwork net;
+
+    cout << "Neural network initialized!\n";
+    cout << "Input: 28x28 image (784 pixels)\n";
+    cout << "Output: digits 0-9\n\n";
+
+    // Example: predict using a blank image.
+    vector<double> image(INPUT, 0.0);
+
+    auto probabilities = net.predict(image);
+
+    int prediction = max_element(
+        probabilities.begin(), probabilities.end()
+    ) - probabilities.begin();
+
+    cout << "Predicted digit: " << prediction << "\n";
+    cout << "Probabilities:\n";
+
+    for (int i = 0; i < OUTPUT; i++) {
+        cout << i << ": "
+             << fixed << setprecision(4)
+             << probabilities[i] << "\n";
+    }
+
+    // Training example:
+    // net.trainOne(image, 0);
+
+    return 0;
+}
